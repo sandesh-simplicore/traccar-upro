@@ -18,6 +18,8 @@ package org.traccar.protocol;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.channel.Channel;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.session.DeviceSession;
 import org.traccar.NetworkMessage;
@@ -35,6 +37,8 @@ import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
 public class UproProtocolDecoder extends BaseProtocolDecoder {
+
+    private static final Logger LOGGER = LoggerFactory.getLogger(UproProtocolDecoder.class);
 
     public UproProtocolDecoder(Protocol protocol) {
         super(protocol);
@@ -319,8 +323,26 @@ public class UproProtocolDecoder extends BaseProtocolDecoder {
             Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
         ByteBuf buf = (ByteBuf) msg;
+        String sentence = buf.toString(StandardCharsets.US_ASCII).trim();
+        LOGGER.info("[UPRO] Received message: {}", sentence);
 
         if (buf.getByte(buf.readerIndex()) != '*') {
+
+            // Detect command responses from the device (e.g., "Lock success", "Unlock success")
+            if (sentence.toLowerCase().contains("lock") || sentence.toLowerCase().contains("unlock")) {
+                DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
+                if (deviceSession != null) {
+                    Position position = new Position(getProtocolName());
+                    position.setDeviceId(deviceSession.getDeviceId());
+                    getLastLocation(position, null);
+                    position.set(Position.KEY_RESULT, sentence);
+                    LOGGER.info("[UPRO] Command response received: deviceId={}, response={}",
+                            deviceSession.getDeviceId(), sentence);
+                    return position;
+                }
+                LOGGER.warn("[UPRO] Command response received but no device session: response={}", sentence);
+            }
+
             return null;
         }
 
