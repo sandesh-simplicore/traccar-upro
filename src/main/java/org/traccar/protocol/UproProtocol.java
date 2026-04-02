@@ -24,11 +24,13 @@ import org.traccar.config.Config;
 import org.traccar.model.Command;
 
 import jakarta.inject.Inject;
+import org.traccar.session.cache.CacheManager;
+
 
 public class UproProtocol extends BaseProtocol {
 
     @Inject
-    public UproProtocol(Config config) {
+    public UproProtocol(Config config, CacheManager cacheManager) {
         setSupportedDataCommands(
                 Command.TYPE_CUSTOM,
                 Command.TYPE_ENGINE_STOP,
@@ -39,7 +41,7 @@ public class UproProtocol extends BaseProtocol {
                 pipeline.addLast(new CharacterDelimiterFrameDecoder(1024, '#'));
                 pipeline.addLast(new StringEncoder());
                 pipeline.addLast(new UproProtocolEncoder(UproProtocol.this));
-                pipeline.addLast(new UproProtocolDecoder(UproProtocol.this));
+                pipeline.addLast(new UproProtocolDecoder(UproProtocol.this, cacheManager));
             }
         });
     }

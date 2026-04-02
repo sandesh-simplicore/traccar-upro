@@ -36,12 +36,20 @@ import java.net.SocketAddress;
 import java.nio.charset.StandardCharsets;
 import java.util.regex.Pattern;
 
+import org.traccar.session.cache.CacheManager;
+import jakarta.inject.Inject;
+
+
 public class UproProtocolDecoder extends BaseProtocolDecoder {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(UproProtocolDecoder.class);
 
-    public UproProtocolDecoder(Protocol protocol) {
+    private final CacheManager cacheManager;
+
+    @Inject
+    public UproProtocolDecoder(Protocol protocol, CacheManager cacheManager) {
         super(protocol);
+        this.cacheManager = cacheManager;
     }
 
     private static final Pattern PATTERN_HEADER = new PatternBuilder()
@@ -307,7 +315,38 @@ public class UproProtocolDecoder extends BaseProtocolDecoder {
                     for (int i = 0; i < 4; i++) {
                         s[i] = status.charAt(i) - '0';
                     }
+                    
+                    int lockState = BitUtil.to(s[0], 3);
                     position.set("logisticsLock", BitUtil.to(s[0], 3));
+
+                    Position lastPosition = cacheManager.getPosition(position.getDeviceId());
+
+                    
+                    LOGGER.info("[UPRO] Logistics lock status received: deviceId={}, lockState={}, lastLockState={}",
+                            position.getDeviceId(), lockState, lastPosition != null ? lastPosition.getInteger("logisticsLock") : null);
+
+                            if (lastPosition != null) {
+                // Get previous lock state from last position attributes
+                Integer previousLockState = lastPosition.getInteger("logisticsLock");
+                
+                LOGGER.info("[UPRO] Comparing lock states: deviceId={}, previousLockState={}, currentLockState={}",
+                        position.getDeviceId(), previousLockState, lockState);
+
+                if (previousLockState != lockState) {
+                    // Genuine state change confirmed
+                    
+                    LOGGER.info("[UPRO] Logistics lock state change confirmed: deviceId={}, newLockState={}",
+                            position.getDeviceId(), lockState);
+                    position.set(
+                        Position.KEY_RESULT,
+                        lockState != 0 ? "Lock confirmed" : "Unlock confirmed"
+                    );
+                }
+            }
+
+                    
+
+
                 }
             }
 
@@ -323,12 +362,13 @@ public class UproProtocolDecoder extends BaseProtocolDecoder {
             Channel channel, SocketAddress remoteAddress, Object msg) throws Exception {
 
         ByteBuf buf = (ByteBuf) msg;
-        String sentence = buf.toString(StandardCharsets.US_ASCII).trim();
-        LOGGER.info("[UPRO] Received message: {}", sentence);
+        // String sentence = buf.toString(StandardCharsets.US_ASCII).trim();
+        // LOGGER.info("[UPRO] Received message: {}", sentence);
 
         if (buf.getByte(buf.readerIndex()) != '*') {
 
             // Detect command responses from the device (e.g., "Lock success", "Unlock success")
+            /*
             if (sentence.toLowerCase().contains("lock") || sentence.toLowerCase().contains("unlock")) {
                 DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
                 if (deviceSession != null) {
@@ -342,6 +382,7 @@ public class UproProtocolDecoder extends BaseProtocolDecoder {
                 }
                 LOGGER.warn("[UPRO] Command response received but no device session: response={}", sentence);
             }
+            */
 
             return null;
         }
